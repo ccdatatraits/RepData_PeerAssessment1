@@ -1,5 +1,7 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: "Sohail Munir Khan"
+date: "15 July 2015"
 output: 
   html_document:
     keep_md: true
@@ -7,19 +9,155 @@ output:
 
 
 ## Loading and preprocessing the data
+```{r, echo = TRUE}
+zipfile <- "activity.zip"
 
+# Check that zip file has been unzipped by looking of activtiy file
+activityFile <- "activity.csv"
+
+# If file doesn't exist, then unzip data
+if (!file.exists(activityFile)) {
+    print("Unzipping Activity Data")
+    unzip(zipfile)
+} else print("Activity Data already unzipped")
+
+# Install "readr" package if required.
+readrPackage <- "readr"
+if (!readrPackage %in% installed.packages()[,"Package"])
+    install.packages(readrPackage, 
+                     repos="http://cran.rstudio.com/")
+
+# Load "readr" package needed to group data to summarize
+library(readr, warn.conflicts = FALSE)
+
+## Read activites into R object specifying col types
+# i for col_integer()
+# D for col_date()
+raw_activities <- read_csv(activityFile, col_types = "iDi")
+
+# Omit any rows with "NA"s
+activities <- na.omit(raw_activities)
+```
 
 
 ## What is mean total number of steps taken per day?
+```{r, echo = TRUE}
+# Install "dplyr" package if required.
+dplyrPackage <- "dplyr"
+if (!dplyrPackage %in% installed.packages()[,"Package"])
+    install.packages(dplyrPackage, 
+                     repos="http://cran.rstudio.com/")
 
+# Load "dplyr" package needed to group data to summarize
+library(dplyr, warn.conflicts = FALSE)
+
+#Chain together commands to:
+# a) group activities by date
+# b) summarise by date and calculate the sum of steps
+# Output (day_summary): 
+#    data frame with variables date, steps_per_day
+day_summary <- activities %>% group_by(date) %>% summarise(steps_per_day = sum(steps))
+
+# Show all days' summary
+day_summary %>% as.data.frame()
+```
+
+[http://www.forbes.com/sites/naomirobbins/2012/01/04/a-histogram-is-not-a-bar-chart/]  
+Histograms are used to show distributions of variables while bar charts are used to compare variables. Histograms plot quantitative data with ranges of the data grouped into bins or intervals while bar charts plot categorical data
+
+```{r, echo = TRUE}
+# Install "ggplot2" package if required.
+ggplot2Package <- "ggplot2"
+if (!ggplot2Package %in% installed.packages()[,"Package"])
+    install.packages(ggplot2Package, 
+                     repos="http://cran.rstudio.com/")
+
+# Load "ggplot2" package needed to group data to summarize
+library(ggplot2, warn.conflicts = FALSE)
+
+# Create histogram using day_summary
+qplot(steps_per_day, data = day_summary, geom = "histogram", binwidth = 5000, main = "Histogram for Steps per Day", xlab = "Steps Per Day", ylab = "Count", fill = I("blue"), col = I("red"), alpha = I(.2))
+
+# Get the summary to see Mean, Median, other info.
+summary(day_summary$steps_per_day)
+```
 
 
 ## What is the average daily activity pattern?
+```{r, echo = TRUE}
+# Install "lattice" package if required.
+latticePackage <- "lattice"
+if (!latticePackage %in% installed.packages()[,"Package"])
+    install.packages(latticePackage, 
+                     repos="http://cran.rstudio.com/")
 
+# Load "ggplot2" package needed to group data to summarize
+library(lattice, warn.conflicts = FALSE)
+
+# Using raw_activities, group by interval and get a summary 
+# of avg_steps per interval (ignoring NAs)
+interval_summary <- raw_activities %>% group_by(interval) %>% summarise(avg_steps_per_interval = mean(steps, na.rm = TRUE))
+
+# Create type = "l" (Time Series graph) using lattice xyplot
+xyplot(avg_steps_per_interval ~ interval, data = interval_summary, type = "l", main = "Time Series for Steps per Interval", xlab = "Day Interval", ylab = "Avg Steps", col = I("red"), alpha = I(.8))
+
+# Arrange in decreasing order by avg_steps_per_interval
+top_avg_steps_per_interval <- interval_summary %>% arrange(desc(avg_steps_per_interval))
+
+# Show the highest interval and its avg_steps_per_interval
+top_n(top_avg_steps_per_interval, 1)
+```
 
 
 ## Imputing missing values
+```{r, echo = TRUE}
+# Sum all observations that have no missing values
+sum(!complete.cases(raw_activities))
+```
 
+* Strategy: Fill with mean of 5-minute interval across all activities
 
+```{r, echo = TRUE}
+# Create imputed_activities using raw_activities but all NAs filled up by first grouping by interval and using the mean of interval to fill when steps is NA
+imputed_activities <- raw_activities %>% group_by(interval) %>% mutate(steps = ifelse(is.na(steps), mean(steps, na.rm = TRUE), steps))
+
+# I am showing the first 10 rows of raw_activities, imputed_activities, interval_summary (we filled the same values) to confirm that we filled the correct values
+raw_activities
+imputed_activities
+interval_summary
+
+# Providing summaries to prove that NAs have been removed
+summary(raw_activities)
+summary(imputed_activities)
+
+# Create an imputed_day_summary to compare with day_summary (raw_activities)
+imputed_day_summary <- imputed_activities %>% group_by(date) %>% summarise(steps_per_day = sum(steps))
+
+# Create histogram using imputed_day_summary
+qplot(steps_per_day, data = imputed_day_summary, geom = "histogram", binwidth = 5000, main = "Histogram for Steps per Day (with imputed data for NAs)", xlab = "Steps Per Day (with imputed data far NAs)", ylab = "Count", fill = I("blue"), col = I("red"), alpha = I(.2))
+
+# Get the summary to see Mean, Median for imputed data
+summary(imputed_day_summary$steps_per_day)
+
+# Get the summary to see Mean, Median for raw data to compare
+summary(day_summary$steps_per_day)
+
+# Showing all imputed_data_summary to show some of the changes to total daily number of steps
+imputed_day_summary %>% as.data.frame()
+```
+Values differ in:  
+* Mean: No change  
+* Median: Imputed one has a slightly higher median  
+* Total Daily Steps: For the days where we didn't have any data, they have been added with average number of steps based on interval
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r, echo = TRUE}
+# Create a new factor variable day_type that is "weekday" for Saturday,Sunday and "weekend" otherwise
+imputed_activities$day_type <- factor(ifelse(weekdays(imputed_activities$date) %in% c("Satuday", "Sunday"), "weekend", "weekday"))
+
+# Using raw_activities, group by interval and get a summary 
+# of avg_steps per interval (ignoring NAs)
+imputed_interval_summary <- imputed_activities %>% group_by(interval, day_type) %>% summarise(avg_steps_per_interval = mean(steps, na.rm = TRUE))
+
+xyplot(avg_steps_per_interval ~ interval | day_type, data = imputed_interval_summary, layout = c(1,2), type = "l", main = "Time Series for Steps per Interval", xlab = "Day Interval", ylab = "Avg Steps", col = I("red"), alpha = I(.8))
+```
